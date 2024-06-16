@@ -13,11 +13,8 @@
 (function() {
     'use strict';
 
-    // >>>>
     const balanceStringSelector = '[data-test-selector="balance-string"]';
     const claimableBonusIconSelector = '.claimable-bonus__icon';
-    // <<<<
-
     let newBalanceLabel;
     let currentUrl = window.location.href;
     const storageKeyPrefix = 'autoClaimPoints_';
@@ -109,6 +106,7 @@
 
     onUrlChange(async () => {
         currentUrl = window.location.href;
+        await waitForPageLoad();
         await ensureBalanceLabel();
     });
 
