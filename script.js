@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    const balanceStringSelector = '[data-test-selector="balance-string"]';
+    const balanceStringSelector = '[data-test-selector="copo-balance-string"]';
     const claimableBonusIconSelector = '.claimable-bonus__icon';
     let newBalanceLabel;
     let currentUrl = window.location.href;
