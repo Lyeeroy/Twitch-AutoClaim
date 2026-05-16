@@ -1,114 +1,73 @@
 // ==UserScript==
 // @name         AutoClaim
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.2
 // @description  automatically claim twitch bonus points
 // @author       hlk
-// @include      https://www.twitch.tv/*
-// @include      https://twitch.tv/*
+// @match        https://www.twitch.tv/*
+// @match        https://twitch.tv/*
 // @grant        none
-// inspired by https://github.com/ran-su/Netflix-marathon
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    const balanceStringSelector = '[data-test-selector="copo-balance-string"]';
-    const claimableBonusIconSelector = '.claimable-bonus__icon';
-    let newBalanceLabel;
-    let currentUrl = window.location.href;
-    const storageKeyPrefix = 'autoClaimPoints_';
+    const selector = '[data-test-selector="copo-balance-string"]';
+    let label, url = window.location.href;
 
-    function sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    function getStoredPoints(url) {
-        return parseInt(localStorage.getItem(storageKeyPrefix + url)) || 0;
-    }
-
-    function storePoints(url, points) {
-        localStorage.setItem(storageKeyPrefix + url, points);
-    }
+    // Exact same storage logic so your previous points load correctly
+    const getPts = () => parseInt(localStorage.getItem('autoClaimPoints_' + url)) || 0;
+    const setPts = (pts) => localStorage.setItem('autoClaimPoints_' + url, pts);
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     async function find() {
-        const bonusIcon = document.querySelector(claimableBonusIconSelector);
-        if (bonusIcon) {
-            bonusIcon.click();
-            const totalClaimedPoints = getStoredPoints(currentUrl) + 50;
-            storePoints(currentUrl, totalClaimedPoints);
-            updateBalance(totalClaimedPoints);
-            await sleep(5 * 60 * 1000);
+        const icon = document.querySelector('.claimable-bonus__icon');
+        if (icon) {
+            icon.click();
+            const total = getPts() + 50;
+            setPts(total);
+            updateBalance(total);
+            await sleep(300000); // 5-minute sleep logic retained
         }
     }
 
-    function updateBalance(totalClaimedPoints) {
-        const balanceElement = document.querySelector(balanceStringSelector);
-        if (balanceElement) {
-            if (newBalanceLabel) {
-                newBalanceLabel.remove();
+    function updateBalance(pts) {
+        const bal = document.querySelector(selector);
+        if (bal) {
+            if (!label) {
+                label = document.createElement('span');
+                // Flex alignment fixes combined into one short line
+                label.style.cssText = 'margin-left:10px; display:inline-flex; align-self:center; cursor:pointer;';
+                label.onclick = (e) => {
+                    e.preventDefault(); e.stopPropagation(); // Prevents twitch menu from opening
+                    if (confirm('Are you sure you want to reset the tracker on this stream?')) {
+                        setPts(0); updateBalance(0);
+                    }
+                };
             }
-            newBalanceLabel = document.createElement('span');
-            newBalanceLabel.style.marginLeft = '10px';
-            newBalanceLabel.onclick = () => {
-                const erasePoints = confirm('Are you sure you want to reset the tracker on this stream?');
-                if (erasePoints) {
-                    storePoints(currentUrl, 0);
-                    updateBalance(0);
-                }
-            };
-            balanceElement.parentNode.appendChild(newBalanceLabel);
-            const newBalanceText = `+${totalClaimedPoints}`;
-            newBalanceLabel.textContent = newBalanceText;
+            bal.parentNode.appendChild(label);
+            label.textContent = '+' + pts;
         }
     }
 
-    async function waitForPageLoad() {
-        while (document.readyState !== 'complete') {
+    // Combines page load wait and balance checking into one shorter function
+    async function initStream() {
+        while (document.readyState !== 'complete') await sleep(1000);
+        for (let i = 0; i < 10; i++) {
+            if (document.querySelector(selector)) { updateBalance(getPts()); return; }
             await sleep(1000);
         }
     }
 
-    async function ensureBalanceLabel() {
-        let retries = 10;
-        while (retries > 0) {
-            const balanceElement = document.querySelector(balanceStringSelector);
-            if (balanceElement) {
-                const totalClaimedPoints = getStoredPoints(currentUrl);
-                updateBalance(totalClaimedPoints);
-                return;
-            }
-            await sleep(1000);
-            retries--;
+    // Original URL observer logic
+    new MutationObserver(() => {
+        if (url !== document.location.href) {
+            url = document.location.href;
+            if (label) label.remove(); // Clear old label when switching streams
+            label = null;
+            initStream();
         }
-        console.error('Failed to find the balance element: "' + balanceStringSelector + '" after multiple retries.');
-    }
+    }).observe(document.body, { childList: true, subtree: true });
 
-    function onUrlChange(callback) {
-        let oldHref = document.location.href;
-        const body = document.querySelector('body');
-        const observer = new MutationObserver(mutations => {
-            mutations.forEach(() => {
-                if (oldHref !== document.location.href) {
-                    oldHref = document.location.href;
-                    callback();
-                }
-            });
-        });
-        observer.observe(body, { childList: true, subtree: true });
-    }
-
-    async function init() {
-        await waitForPageLoad();
-        await ensureBalanceLabel();
-        window.setInterval(find, 5000);
-    }
-
-    onUrlChange(async () => {
-        currentUrl = window.location.href;
-        await waitForPageLoad();
-        await ensureBalanceLabel();
-    });
-
-    init();
+    initStream().then(() => setInterval(find, 5000));
 })();
